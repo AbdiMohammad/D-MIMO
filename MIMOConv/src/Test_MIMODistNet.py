@@ -23,22 +23,21 @@ import pathlib
 
 
 # Thread function to collect power data during DNN execution
-def collect_power_data(power_data, start_event, stop_event, end_event):
+def collect_power_data(power_data, start_event, stop_event):
     with jtop() as jetson:
         # # Get idle power consumption before DNN execution
         # idle_power = jetson.stats['tot']['power']
         # print(f"Idle power consumption: {idle_power} W")
         
-        while not end_event.is_set():
-            # Wait for DNN execution to start
-            start_event.wait()
-            
-            # Collect power data during DNN execution
-            while not stop_event.is_set():# and jetson.ok():
-                # power = jetson.power['tot']['power']# - idle_power
-                power = 10
+        # Wait for DNN execution to start
+        start_event.wait()
+        
+        # Collect power data during DNN execution
+        while not stop_event.is_set():
+            while jetson.ok():
+                power = jetson.power['tot']['power']# - idle_power
                 power_data.append(power)
-                time.sleep(0.1)  # Adjust frequency if necessary
+                # time.sleep(0.1)  # Adjust frequency if necessary
 
 def save_power():
     # Setup for collecting power data
@@ -75,7 +74,7 @@ def save_power():
     return average_power, len(power_data)
 
 def save_time():
-    n_times = 20
+    n_times = 10
     inference_time = []
     start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     
