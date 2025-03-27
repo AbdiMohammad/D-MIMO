@@ -90,10 +90,10 @@ def save_time():
 
                 torch.cuda.synchronize()
                 if args.partition == "MD":
-                    split_event = eval(f"model.{args.split_layer}.1.split_event")
+                    split_event = eval(f"model.{args.split_layer}[1].split_event")
                     inference_time.append(start_event.elapsed_time(split_event))
                 elif args.partition == "ES":
-                    split_event = eval(f"model.{args.split_layer}.2.split_event")
+                    split_event = eval(f"model.{args.split_layer}[2].split_event")
                     inference_time.append(split_event.elapsed_time(end_event))
                 elif args.partition in ["MC", "EC"]:
                     inference_time.append(start_event.elapsed_time(end_event))
