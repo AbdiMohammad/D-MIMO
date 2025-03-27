@@ -42,7 +42,7 @@ def collect_power_data(power_data, start_event, stop_event):
 
 def save_power():
     # Setup for collecting power data
-    n_times = 10
+    n_times = 20
     power_data = []
     start_event = threading.Event()
     stop_event = threading.Event()
@@ -75,7 +75,7 @@ def save_power():
     return average_power, len(power_data)
 
 def save_time():
-    n_times = 10
+    n_times = 20
     inference_time = []
     start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     
@@ -90,11 +90,19 @@ def save_time():
 
                 torch.cuda.synchronize()
                 if args.partition == "MD":
-                    split_event = eval(f"model.{args.split_layer}[1].split_event")
-                    inference_time.append(start_event.elapsed_time(split_event))
+                    if "Dist" in args.model:
+                        split_event = eval(f"model.{args.split_layer}[1].split_event")
+                        inference_time.append(start_event.elapsed_time(split_event))
+                    else:
+                        split_event = eval(f"model.{args.split_layer}.split_event")
+                        inference_time.append(start_event.elapsed_time(split_event))
                 elif args.partition == "ES":
-                    split_event = eval(f"model.{args.split_layer}[2].split_event")
-                    inference_time.append(split_event.elapsed_time(end_event))
+                    if "Dist" in args.model:
+                        split_event = eval(f"model.{args.split_layer}[2].split_event")
+                        inference_time.append(split_event.elapsed_time(end_event))
+                    else:
+                        split_event = eval(f"model.{args.split_layer}.split_event")
+                        inference_time.append(split_event.elapsed_time(end_event))
                 elif args.partition in ["MC", "EC"]:
                     inference_time.append(start_event.elapsed_time(end_event))
     
@@ -104,7 +112,7 @@ def save_time():
 
 
 def warmup_GPU():
-    n_times = 2
+    n_times = 1
     with torch.no_grad():
         for _ in range(n_times):
             for inputs, _ in evalloader:
@@ -297,19 +305,30 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
 
     warmup_GPU()
 
-    if args.partition == "MD":
-        exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], True)")
-    elif args.partition == "ES":
-        exec(f"model.{args.split_layer}[2] = SplitLayer(model.{args.split_layer}[2], False)")
+    if "Dist" in args.model:
+        if args.partition == "MD":
+            exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], True)")
+        elif args.partition == "ES":
+            exec(f"model.{args.split_layer}[2] = SplitLayer(model.{args.split_layer}[2], False)")
+    else:
+        if args.partition == "MD":
+            exec(f"model.{args.split_layer} = SplitLayer(model.{args.split_layer}, True)")
+        elif args.partition == "ES":
+            exec(f"model.{args.split_layer} = SplitLayer(model.{args.split_layer}, False)")
 
     if args.partition in ["MD", "MC"]:
         average_power, power_len = save_power()
         print(f'Avg power: {average_power}\nNumber of samples: {power_len}')
         measurement.update({"Power": average_power, "Power_Len": power_len})
     
-    if args.partition == "MD":
-        exec(f"model.{args.split_layer}[1] = model.{args.split_layer}[1].split_layer")
-        exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], False)")
+    if "Dist" in args.model:
+        if args.partition == "MD":
+            exec(f"model.{args.split_layer}[1] = model.{args.split_layer}[1].split_layer")
+            exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], False)")
+    else:
+        if args.partition == "MD":
+            exec(f"model.{args.split_layer} = model.{args.split_layer}.split_layer")
+            exec(f"model.{args.split_layer} = SplitLayer(model.{args.split_layer}, False)")
 
     average_time, time_len = save_time()
     print(f'Avg time: {average_time}\nNumber of samples: {time_len}')
