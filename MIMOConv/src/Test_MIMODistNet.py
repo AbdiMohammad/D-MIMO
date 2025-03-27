@@ -33,11 +33,12 @@ def collect_power_data(power_data, start_event, stop_event):
         start_event.wait()
         
         # Collect power data during DNN execution
-        while not stop_event.is_set():
-            while jetson.ok():
-                power = jetson.power['tot']['power']# - idle_power
-                power_data.append(power)
-                # time.sleep(0.1)  # Adjust frequency if necessary
+        while jetson.ok():
+            power = jetson.power['tot']['power']# - idle_power
+            power_data.append(power)
+            # time.sleep(0.1)  # Adjust frequency if necessary
+            if stop_event.is_set():
+                break
 
 def save_power():
     # Setup for collecting power data
@@ -103,8 +104,9 @@ def save_time():
 
 
 def warmup_GPU():
+    n_times = 2
     with torch.no_grad():
-        for _ in range(2):
+        for _ in range(n_times):
             for inputs, _ in evalloader:
                 inputs = inputs.to(device)
 
