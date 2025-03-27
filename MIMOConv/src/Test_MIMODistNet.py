@@ -297,9 +297,9 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     warmup_GPU()
 
     if args.partition == "MD":
-        exec(f"model.{args.split_layer}.1 = SplitLayer(model.{args.split_layer}.1, True)")
+        exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], True)")
     elif args.partition == "ES":
-        exec(f"model.{args.split_layer}.2 = SplitLayer(model.{args.split_layer}.2, False)")
+        exec(f"model.{args.split_layer}[2] = SplitLayer(model.{args.split_layer}[2], False)")
 
     if args.partition in ["MD", "MC"]:
         average_power, power_len = save_power()
@@ -307,8 +307,8 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
         measurement.update({"Power": average_power, "Power_Len": power_len})
     
     if args.partition == "MD":
-        exec(f"model.{args.split_layer}.1 = model.{args.split_layer}.1.split_layer")
-        exec(f"model.{args.split_layer}.1 = SplitLayer(model.{args.split_layer}.1, False)")
+        exec(f"model.{args.split_layer}[1] = model.{args.split_layer}[1].split_layer")
+        exec(f"model.{args.split_layer}[1] = SplitLayer(model.{args.split_layer}[1], False)")
 
     average_time, time_len = save_time()
     print(f'Avg time: {average_time}\nNumber of samples: {time_len}')
