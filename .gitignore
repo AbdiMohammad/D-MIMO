@@ -1,6 +1,7 @@
 # Temporary tests
 MIMOConv/.temp
 MIMOConv/results
+.bkup
 
 __pycache__
 *.py[cod]
