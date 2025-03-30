@@ -72,8 +72,58 @@ class BasicBlock(nn.Module):
 
         return out
 
+class BottleFitBasicBlock(nn.Module):
+    def __init__(self, inplanes: int, midplanes: int, outplanes: int, stride: int = 1, downsample: Optional[nn.Module] = None, norm_layer: Optional[nn.Module] = None, relu_parameter: float = -1, skip_init: bool = False) -> None:
+        super().__init__()
+        r"""Similar to BasicBlock (defined in wideresnet), but with different number of intermediate and output planes. It injects a bottleneck at the output. Initializes a block of a resnet model
+        Args:
+            inplanes: number of channels of input tensor
+            hidplanes: number of channels of intermediate tensor after first convolution
+            outplanes: number of channels of output tensor
+            stride: stride to apply in first convolution
+            downsample: None or 1x1 convolution in case direct skip connection is not possible (channel difference)
+            norm_layer: normalization layer like BatchNorm
+            relu_parameter: initialisation of sReLU parameter
+            skip_init: whether skipInit is used
+        """
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        
+        self.bn1 = norm_layer(inplanes)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.conv1 = nn.Conv2d(inplanes, midplanes, kernel_size=3, padding=1, stride=stride, bias=False)
+        self.bn2 = norm_layer(midplanes)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(midplanes, outplanes, kernel_size=3, padding=1, bias=False)
+        self.downsample = downsample
+        self.stride = stride
+        self.alpha = torch.nn.parameter.Parameter(data=torch.tensor(0.), requires_grad=True)
+        self.skip_init = skip_init
+
+    def forward(self, x: Tensor) -> Tensor:
+        identity = x
+
+        # order of operations as described in wideresnet paper which is different to the original resnet implementation
+        out = self.bn1(x)
+        out = self.relu1(out)
+        out = self.conv1(out)
+
+        out = self.bn2(out)
+        out = self.relu2(out)
+        out = self.conv2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        if self.skip_init:
+            out = self.alpha*out + identity
+        else:
+            out = out + identity
+
+        return out
+
 class SuperWideResnet(nn.Module, Superposition):
-    def __init__(self, num_img_sup_cap: int, binding_type: str, width: int, layers: List[int], initial_width: int = 1, num_classes: int = 1000, norm_layer: Optional[nn.Module] = None, block = BasicBlock, relu_parameter = None, skip_init: bool = False, trainable_keys = True, input_channels: int=3) -> None:
+    def __init__(self, num_img_sup_cap: int, binding_type: str, width: int, layers: List[int], initial_width: int = 1, num_classes: int = 1000, norm_layer: Optional[nn.Module] = None, block = BasicBlock, relu_parameter = None, skip_init: bool = False, trainable_keys = True, input_channels: int=3, bottlefit_size: int=None) -> None:
         r"""Initialises a Computation in Superposition enabled WideResNet
         Args:
             num_img_sup_cap: num_img_sup_cap(acity) indicates how many images can at most be processed concurrently. Each batch is divided into num_img_sup parts, which are processed concurrently, with leftovers discarded.
@@ -130,7 +180,10 @@ class SuperWideResnet(nn.Module, Superposition):
             self.bn1 = norm_layer(self.inplanes)
             self.relu = nn.ReLU(inplace=True)
             self.maxpool = nn.Identity()
-            self.layer1 = self._make_layer(block, 16*width, layers[0])
+            if bottlefit_size is None:
+                self.layer1 = self._make_layer(block, 16*width, layers[0])
+            else:
+                self.layer1 = self._make_bf_layer(block, 16*width, bottlefit_size, layers[0])
             self.layer2 = self._make_layer(block, 32*width, layers[1], stride=2)
             self.layer3 = self._make_layer(block, 64*width, layers[2], stride=2)
             self.layer4 = nn.Identity()
@@ -182,6 +235,48 @@ class SuperWideResnet(nn.Module, Superposition):
             layers.append(block(self.inplanes, planes, 1, None, norm_layer, self.relu_parameter, self.skip_init))
 
         return nn.Sequential(*layers)
+
+    def _make_bf_layer(self, block : Type[BasicBlock], midplanes: int, outplanes: int, blocks: int, stride: int = 1) -> nn.Sequential:
+        r"""Generates a ResNet bottleneck layer
+        Args:
+            block: ResNet block used in layers. Block also admits children of BasicBlock, useful for ISONet type architecture
+            midplanes: number of intermediate tensor channels
+            outplanes: number of output channels
+            blocks: number of blocks to use in layer
+            stride: stride present in first block of layer
+
+        Returns:
+            a layer, i.e. sequential of blocks
+        """
+        norm_layer = self._norm_layer
+        downsample = None
+
+        if blocks == 1:
+            if stride != 1 or self.inplanes != outplanes:
+                downsample = nn.Sequential(nn.Conv2d(self.inplanes, outplanes, kernel_size=1, stride=stride, bias=False), norm_layer(outplanes))
+            
+            layers = []
+            layers.append(BottleFitBasicBlock(self.inplanes, midplanes, outplanes, stride, downsample, norm_layer, self.relu_parameter, self.skip_init))
+            self.inplanes = outplanes
+
+            return nn.Sequential(*layers)
+        else:
+            if stride != 1 or self.inplanes != midplanes:
+                downsample = nn.Sequential(nn.Conv2d(self.inplanes, midplanes, kernel_size=1, stride=stride, bias=False), norm_layer(midplanes))
+
+                layers = []
+                layers.append(block(self.inplanes, midplanes, stride, downsample, norm_layer, self.relu_parameter, self.skip_init))
+                self.inplanes = midplanes
+
+                for _ in range(1, blocks - 1):
+                    layers.append(block(self.inplanes, midplanes, 1, None, norm_layer, self.relu_parameter, self.skip_init))
+                
+                downsample_end = nn.Sequential(nn.Conv2d(self.inplanes, outplanes, kernel_size=1, stride=stride, bias=False), norm_layer(outplanes))
+
+                layers.append(BottleFitBasicBlock(self.inplanes, midplanes, outplanes, stride, downsample_end, norm_layer, self.relu_parameter, self.skip_init))
+                self.inplanes = outplanes
+
+                return nn.Sequential(*layers)
 
     # contrary to isonet not isometry regularization is present
     def isometry_regularization(self, device):

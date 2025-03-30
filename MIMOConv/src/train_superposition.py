@@ -134,7 +134,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     #------------- argument parsing --------------- 
     # only -y, -m not used
     parser = argparse.ArgumentParser(description='Trains and evaluates CNNs, in particular demonstrating superposition principles', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('model', type=str, choices=["WideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideResNet-16", "WideISOReLUNet-16", 
+    parser.add_argument('model', type=str, choices=["WideResNet-10", "WideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideResNet-16", "WideISOReLUNet-16", 
                                                     "WideISONet-16", "MIMONet-16", "MIMONet-10"], help='architecture and network depth')
     parser.add_argument('dataset', type=str, choices=["CIFAR10", "CIFAR100", "MNIST", "SVHN"], help='dataset')
     parser.add_argument("type", type=str, choices=["None", "HRR", "MBAT"], help="binding type")
@@ -166,10 +166,12 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument("-c", "--checkpointing_path", type=str, default="results/", help="saves model to path after each epoch")
     parser.add_argument('-t', "--transfer_learning_path", type=str, default=None, help="loads model from checkpoint at path as starting point")
     parser.add_argument('-r', "--random_seed", type=int, default=42, help="allows reproducibility")
+
+    parser.add_argument("--bottlefit_size", type=int, default=None, help="determines the size of the injected bottleneck")
  
     args = parser.parse_args()
 
-    identifier = f'Experiment{args.experiment_nr}/{args.model}/{args.dataset}/{args.type}/{args.num}/{args.width}/{args.initial_width}/{args.relu_parameter_init}/{args.skip_init}/{args.dirac_init}/{args.batch_norm_disabled}/{args.binding_regularization}/{args.orthogonal_regularization}/{args.sup_frequency}/{args.sup_low}/{args.batch_size}/{args.number_of_cpus}/{args.epochs}/{args.lr}/{args.weight_decay}/{args.mixup_alpha}/{args.gradient_clipping}/{args.random_seed}'
+    identifier = f'Experiment{args.experiment_nr}/{args.model}{"-BF-" + str(args.bottlefit_size) if args.bottlefit_size is not None else ""}/{args.dataset}/{args.type}/{args.num}/{args.width}/{args.initial_width}/{args.relu_parameter_init}/{args.skip_init}/{args.dirac_init}/{args.batch_norm_disabled}/{args.binding_regularization}/{args.orthogonal_regularization}/{args.sup_frequency}/{args.sup_low}/{args.batch_size}/{args.number_of_cpus}/{args.epochs}/{args.lr}/{args.weight_decay}/{args.mixup_alpha}/{args.gradient_clipping}/{args.random_seed}'
     identifier_ = identifier.replace('/', '_')
 
      #------------- reproducibility ---------------  
@@ -187,7 +189,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     #------------- logging ---------------  
     description_dict = {
         'experiment' : args.experiment_nr,
-        'model': args.model,
+        'model': args.model if args.bottlefit_size is None else args.model + "-BF-" + str(args.bottlefit_size),
         'dataset': args.dataset,
         'binding_type': args.type,
         'superposition_capacity': args.num,
@@ -246,12 +248,13 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     else:
         norm = None # defaults to BatchNorm
 
-    model = {"WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+    model = {"WideResNet-10":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
+             "WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
              "WideISONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-10":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
-             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
              "WideISONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels)
