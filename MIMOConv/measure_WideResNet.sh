@@ -31,7 +31,7 @@ do
     echo ${model_name}
 
     checkpoint=results/Experiment${experiment_nr}_${model}_${dataset}_${type}_${num}_${width}_${initial_width}_None_False_False_False_0.1_0.0001_1.0_None_${batch_size_train}_${number_of_cpus_train}_${epochs}_0.2_1e-05_1.0_10.0_1_model.pt
-    CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py ${model} ${dataset} ${type} ${num} --width ${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint ${checkpoint} --split_layer layer1 --channel_model rayleigh --precoder_type task-oriented --partition MD
+    CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py ${model} ${dataset} ${type} ${num} --width ${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint ${checkpoint} --split_layer layer4 --channel_model rayleigh --precoder_type task-oriented --partition MD
 done
 
 # ssh jetson << EOF
@@ -45,6 +45,6 @@ done
 #         echo \${model_name}
 
 #         checkpoint=results/Experiment${experiment_nr}_\${model}_${dataset}_${type}_${num}_\${width}_${initial_width}_None_False_False_False_0.1_0.0001_1.0_None_${batch_size_train}_${number_of_cpus_train}_${epochs}_0.2_1e-05_1.0_10.0_1_model.pt
-#         CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py \${model} ${dataset} ${type} ${num} --width \${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint \${checkpoint} --split_layer layer1 --channel_model rayleigh --precoder_type task-oriented --partition MD
+#         CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py \${model} ${dataset} ${type} ${num} --width \${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint \${checkpoint} --split_layer layer4 --channel_model rayleigh --precoder_type task-oriented --partition MD
 #     done
 # EOF

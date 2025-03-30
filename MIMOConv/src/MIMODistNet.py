@@ -192,7 +192,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument("-a", "--mixup_alpha", type=float, default=1.0, help="high alpha yields strong mixup, alpha = 1 uniform mixup, alpha = 0 no mixup")
     parser.add_argument("-g", "--gradient_clipping", type=float, default=10.0, help="the cutoff ratio (compared to average gradient norm of last epoch) selecting which batches are filtered out")
     parser.add_argument("-c", "--checkpointing_path", type=str, default="results/", help="saves model to path after each epoch")
-    parser.add_argument('-t', "--transfer_learning_path", type=str, required=True, default=None, help="loads model from checkpoint at path as starting point")
+    parser.add_argument('-t', "--transfer_learning_path", type=str, default=None, help="loads model from checkpoint at path as starting point")
     parser.add_argument('-r', "--random_seed", type=int, default=42, help="allows reproducibility")
 
     parser.add_argument('--split_layer', type=str, default=None, help="the splitting layer between the head and tail of the distributed DNN")

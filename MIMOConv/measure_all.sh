@@ -6,7 +6,7 @@ ssh jetson "rm -rf /home/mabdi/MAbdi/D-MIMO/MIMOConv/results"
 
 scp -r /home/microway/MAbdi/multiple-input-multiple-output-nets/.bkup/results jetson:/home/mabdi/MAbdi/D-MIMO/MIMOConv/
 
-ssh jetson << EOF
+ssh -tt jetson << EOF
     cd ~/MAbdi/D-MIMO/MIMOConv/
     chmod +x ./measure_DMIMO.sh
     chmod +x ./measure_MIMONet.sh

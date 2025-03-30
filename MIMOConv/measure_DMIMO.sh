@@ -2,10 +2,8 @@
 
 GPU_DEVICE=$1
 
-# depths=(28 16 10)
-# widths=(10 8 4)
-depths=(10 16 28)
-widths=(4 8 10)
+depths=(28 16 10)
+widths=(10 8 4)
 
 dataset=CIFAR10
 batch_size_test=64
