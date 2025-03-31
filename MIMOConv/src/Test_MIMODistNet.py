@@ -114,32 +114,33 @@ def save_time():
     average_time = sum(inference_time) / len(inference_time) if inference_time else 0
 
     communication_time, communication_energy = None, None
-    if "Dist" in args.model:
-        # TODO: Do it tomorrow when assholes are not here
-        communication_time = 0
-        communication_energy = 0
-    else:
-        # Total application layer buffer size in bytes
-        latent_bytes = latent_size.numel() * 4
-        # Data rate of our MIMO mmWave software-defined-radio (Pi-Radio) in bytes per second
-        # Assumptions: OFDM symbols in each time slot with a total of 1024 * 8 I/Q symbols
-        # QPSK modulation schemes
-        # 568.9 ns per OFDM symbols based on radio bandwidth
-        RADIO_DATA_RATE = 1024 * 8 / 4 / (568.9e-9)
-        # Physical Layer Protocol Data Unit (PPDU) length in bytes
-        PPDU_LEN = 500
-        # Overhead (bytes) = 20 TCP​ + 20 IPv4 ​+ 8 LLC ​+ 24 MAC ​+ 4 FCS ​+ Physical overhead
-        OVERHEAD_PER_PPDU = 76
-        # Number of PPDUs
-        n_ppdu = math.ceil(latent_bytes / (PPDU_LEN - OVERHEAD_PER_PPDU))
-        # Total transferred bytes
-        total_bytes = PPDU_LEN * n_ppdu
-        # Communication time
-        communication_time = total_bytes / RADIO_DATA_RATE
-        # Energy consumption per byte of our radio in Joules per byte
-        RADIO_ENERGY_CONSUMPTION = (3.32e-6) / (1024 * 8 / 4)
-        # Communication energy
-        communication_energy = RADIO_ENERGY_CONSUMPTION * total_bytes
+    if args.partition == "ES":
+        if "Dist" in args.model:
+            # TODO: Do it tomorrow when assholes are not here
+            communication_time = 0
+            communication_energy = 0
+        else:
+            # Total application layer buffer size in bytes
+            latent_bytes = latent_size.numel() * 4
+            # Data rate of our MIMO mmWave software-defined-radio (Pi-Radio) in bytes per second
+            # Assumptions: OFDM symbols in each time slot with a total of 1024 * 8 I/Q symbols
+            # QPSK modulation schemes
+            # 568.9 ns per OFDM symbols based on radio bandwidth
+            RADIO_DATA_RATE = 1024 * 8 / 4 / (568.9e-9)
+            # Physical Layer Protocol Data Unit (PPDU) length in bytes
+            PPDU_LEN = 500
+            # Overhead (bytes) = 20 TCP​ + 20 IPv4 ​+ 8 LLC ​+ 24 MAC ​+ 4 FCS ​+ Physical overhead
+            OVERHEAD_PER_PPDU = 76
+            # Number of PPDUs
+            n_ppdu = math.ceil(latent_bytes / (PPDU_LEN - OVERHEAD_PER_PPDU))
+            # Total transferred bytes
+            total_bytes = PPDU_LEN * n_ppdu
+            # Communication time
+            communication_time = total_bytes / RADIO_DATA_RATE
+            # Energy consumption per byte of our radio in Joules per byte
+            RADIO_ENERGY_CONSUMPTION = (3.32e-6) / (1024 * 8 / 4)
+            # Communication energy
+            communication_energy = RADIO_ENERGY_CONSUMPTION * total_bytes
 
     return average_time, len(inference_time), communication_time, communication_energy
 
