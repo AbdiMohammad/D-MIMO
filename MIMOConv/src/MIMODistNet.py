@@ -43,8 +43,6 @@ def train_epoch(average_gradient_last_epoch):
     model.num_img_sup = args.num 
     for _ in range(args.num): # batch size scales proportionally with args.num. Must correct for fewer updates to be fair.
         for inputs, labels in trainloader:
-            if inputs.shape[0] != args.batch_size * args.num:
-                continue
             if args.sup_frequency < 1:
                 if torch.rand(1) > args.sup_frequency:
                     model.num_img_sup = sup_low # batch size in bulk of the model after binding increases by factor args.num / sup_low
@@ -133,8 +131,6 @@ def validate_epoch():
 
     with torch.no_grad():
         for inputs, labels in evalloader:
-            if inputs.shape[0] != args.num * args.batch_size:
-                continue
             # transfer data to GPU
             inputs = inputs.to(device)
             labels = labels.to(device)
@@ -162,7 +158,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     #------------- argument parsing --------------- 
     # only -y, -m not used
     parser = argparse.ArgumentParser(description='Trains and evaluates CNNs, in particular demonstrating superposition principles', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('model', type=str, choices=["WideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideResNet-16", "WideISOReLUNet-16", 
+    parser.add_argument('model', type=str, choices=["WideResNet-10", "WideResNet-16", "WideResNet-28", "DistWideResNet-10", "DistWideResNet-16", "DistWideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideISOReLUNet-16", 
                                                     "WideISONet-16", "MIMONet-16", "MIMONet-10", "MIMODistNet-10", "MIMODistNet-16", "MIMODistNet-28"], help='architecture and network depth')
     parser.add_argument('dataset', type=str, choices=["CIFAR10", "CIFAR100", "MNIST", "SVHN"], help='dataset')
     parser.add_argument("type", type=str, choices=["None", "HRR", "MBAT"], help="binding type")
@@ -199,7 +195,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument('--comm_n_streams', type=int, default=8, help="the number of data streams in MIMO communication system")
     parser.add_argument('--channel_model', type=str, default="awgn", help="the model for the MIMO communication channel")
     parser.add_argument('--comm_snr', type=float, default=20, help="the SNR for the additive white Gaussian noise communication channel used for training")
-    parser.add_argument('--precoder_type', type=str, default="task-oriented", help="the MIMO communication precoding technique")
+    parser.add_argument('--precoder_type', type=str, default=None, help="the MIMO communication precoding technique")
 
     args = parser.parse_args()
 
@@ -280,12 +276,16 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     else:
         norm = None # defaults to BatchNorm
 
-    model = {"WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+    model = {"WideResNet-10":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "DistWideResNet-10":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "DistWideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
+             "DistWideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-10":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
-             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
@@ -317,7 +317,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
                                     shuffle=True, num_workers=args.number_of_cpus, pin_memory=pin_memory, drop_last=True, worker_init_fn=seed_worker, generator=g) 
     train_iters = len(trainloader)
     evalloader = data.DataLoader(evalset, batch_size=args.batch_size*args.num,
-                                    shuffle=True, num_workers=args.number_of_cpus, pin_memory=pin_memory, drop_last=False, worker_init_fn=seed_worker, generator=g)
+                                    shuffle=True, num_workers=args.number_of_cpus, pin_memory=pin_memory, drop_last=True, worker_init_fn=seed_worker, generator=g)
 
     model = model.to(device)
 
@@ -441,9 +441,11 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
             writer.add_scalar(f'Isometry_Regularization', ir, epoch)
             writer.flush()
         
-        if "Dist" in args.model:
+        if "MIMODistNet" in args.model:
             model.get_submodule(f"{args.split_layer}.2").update_channel_matrix()
             model.get_submodule(f"{args.split_layer}.2").to(device)
+        
+        if args.precoder_type is not None:
             model.get_submodule(f"{args.split_layer}.1").set_channel_matrix(model.get_submodule(f"{args.split_layer}.2").channel_matrix)
             model.get_submodule(f"{args.split_layer}.1").to(device)
             model.get_submodule(f"{args.split_layer}.3").set_channel_matrix(model.get_submodule(f"{args.split_layer}.2").channel_matrix)

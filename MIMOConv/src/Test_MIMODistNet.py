@@ -20,6 +20,7 @@ import time
 from comm_utils import insert_mimo_channel
 import threading
 import pathlib
+import math
 
 
 # Thread function to collect power data during DNN execution
@@ -78,6 +79,8 @@ def save_time():
     n_times = 20
     inference_time = []
     start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+
+    latent_size = None
     
     with torch.no_grad():
         for _ in range(n_times):
@@ -100,15 +103,45 @@ def save_time():
                     if "Dist" in args.model:
                         split_event = eval(f"model.{args.split_layer}[2].split_event")
                         inference_time.append(split_event.elapsed_time(end_event))
+                        latent_size = eval(f"model.{args.split_layer}[2].latent_size")
                     else:
                         split_event = eval(f"model.{args.split_layer}.split_event")
                         inference_time.append(split_event.elapsed_time(end_event))
+                        latent_size = eval(f"model.{args.split_layer}.latent_size")
                 elif args.partition in ["MC", "EC"]:
                     inference_time.append(start_event.elapsed_time(end_event))
     
     average_time = sum(inference_time) / len(inference_time) if inference_time else 0
 
-    return average_time, len(inference_time)
+    communication_time, communication_energy = None, None
+    if "Dist" in args.model:
+        # TODO: Do it tomorrow when assholes are not here
+        communication_time = 0
+        communication_energy = 0
+    else:
+        # Total application layer buffer size in bytes
+        latent_bytes = latent_size.numel() * 4
+        # Data rate of our MIMO mmWave software-defined-radio (Pi-Radio) in bytes per second
+        # Assumptions: OFDM symbols in each time slot with a total of 1024 * 8 I/Q symbols
+        # QPSK modulation schemes
+        # 568.9 ns per OFDM symbols based on radio bandwidth
+        RADIO_DATA_RATE = 1024 * 8 / 4 / (568.9e-9)
+        # Physical Layer Protocol Data Unit (PPDU) length in bytes
+        PPDU_LEN = 500
+        # Overhead (bytes) = 20 TCP​ + 20 IPv4 ​+ 8 LLC ​+ 24 MAC ​+ 4 FCS ​+ Physical overhead
+        OVERHEAD_PER_PPDU = 76
+        # Number of PPDUs
+        n_ppdu = math.ceil(latent_bytes / (PPDU_LEN - OVERHEAD_PER_PPDU))
+        # Total transferred bytes
+        total_bytes = PPDU_LEN * n_ppdu
+        # Communication time
+        communication_time = total_bytes / RADIO_DATA_RATE
+        # Energy consumption per byte of our radio in Joules per byte
+        RADIO_ENERGY_CONSUMPTION = (3.32e-6) / (1024 * 8 / 4)
+        # Communication energy
+        communication_energy = RADIO_ENERGY_CONSUMPTION * total_bytes
+
+    return average_time, len(inference_time), communication_time, communication_energy
 
 
 def warmup_GPU():
@@ -130,6 +163,7 @@ class SplitLayer(nn.Module):
     def forward(self, x):
         res = self.split_layer(x)
         self.split_event.record()
+        self.latent_size = res.size()
         if self.throw_excep:
             raise Exception()
         else:
@@ -185,7 +219,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
 
     #------------- argument parsing --------------- 
     parser = argparse.ArgumentParser(description='Evaluates D-MIMO and the baselines, demonstrating computation and communication in superposition', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('model', type=str, choices=["WideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideResNet-16", "WideISOReLUNet-16", "WideISONet-16", "MIMONet-16", "MIMONet-10", "MIMODistNet-10", "MIMODistNet-16", "MIMODistNet-28"], help='architecture and network depth')
+    parser.add_argument('model', type=str, choices=["WideResNet-10", "WideResNet-16", "WideResNet-28", "WideISOReLUNet-28", "WideISONet-28", "MIMONet-28", "WideISOReLUNet-16", "WideISONet-16", "MIMONet-16", "MIMONet-10", "MIMODistNet-10", "MIMODistNet-16", "MIMODistNet-28"], help='architecture and network depth')
     parser.add_argument('dataset', type=str, choices=["CIFAR10", "CIFAR100", "MNIST", "CUB"], help='dataset')
     parser.add_argument("type", type=str, choices=["None", "HRR", "MBAT"], help="binding type")
     parser.add_argument("num", type=int, help="maximum superposition capability of model")
@@ -198,7 +232,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument("-z", "--batch_norm_disabled", action="store_true", help="whether batch norm is disabled")
     parser.add_argument("-v", "--trainable_keys_disabled", action="store_true", help="whether keys are fixed after initialisation")
 
-    parser.add_argument('-s', "--sup_low", type=int, default=4, help="how many images are superposed in the low-demand setting. If left unspecified always [num] images are superposed")
+    parser.add_argument('-s', "--sup_low", type=int, default=None, help="how many images are superposed in the low-demand setting. If left unspecified always [num] images are superposed")
 
     parser.add_argument("-b", "--batch_size", type=int, default=64, help="the batch size used. The batch size before binding is larger by a factor [num]")
     parser.add_argument("-n", "--number_of_cpus", type=int, default=6, help="number of cpus used in dataloading")
@@ -209,6 +243,8 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument('--channel_model', type=str, default="awgn", help="the model for the MIMO communication channel")
     parser.add_argument('--comm_snr', type=float, default=20, help="the SNR for the additive white Gaussian noise communication channel used for training")
     parser.add_argument('--precoder_type', type=str, default="task-oriented", help="the MIMO communication precoding technique")
+
+    parser.add_argument("--bottlefit_size", type=int, default=None, help="determines the size of the injected bottleneck")
 
     parser.add_argument('--partition', type=str, choices=["MD", "ES", "EC", "MC"], default="EC", help='the partition of the DNN that should be tested: MD: Mobile Device; ES: Edge Server; EC: Edge Computing; MC: Mobile Computing')
  
@@ -245,12 +281,13 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     else:
         norm = None # defaults to BatchNorm
 
-    model = {"WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled),
+    model = {"WideResNet-10":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
+             "WideResNet-16":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
+             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels, bottlefit_size=args.bottlefit_size),
              "WideISONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-10":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [1, 1, 1], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-16":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [2, 2, 2], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
-             "WideResNet-28":SuperWideResnet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "WideISOReLUNet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=BasicBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
              "MIMONet-28":SuperWideISONet(num_img_sup_cap = args.num, binding_type = args.type, width=args.width, layers= [4, 4, 4], initial_width=args.initial_width, num_classes=num_classes, norm_layer=norm, block=AdjustedISOBlock, dirac_init=args.dirac_init, relu_parameter=args.relu_parameter_init, skip_init=args.skip_init, trainable_keys = not args.trainable_keys_disabled, input_channels = input_channels),
@@ -330,9 +367,13 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
             exec(f"model.{args.split_layer} = model.{args.split_layer}.split_layer")
             exec(f"model.{args.split_layer} = SplitLayer(model.{args.split_layer}, False)")
 
-    average_time, time_len = save_time()
+    average_time, time_len, communication_time, communication_energy = save_time()
     print(f'Avg time: {average_time}\nNumber of samples: {time_len}')
     measurement.update({"Time": average_time, "Time_Len": time_len})
+    if communication_time is not None:
+        measurement.update({"Comm_Time": communication_time})
+    if communication_energy is not None:
+        measurement.update({"Comm_Energy": communication_energy})
 
     measurements.update({args.partition: measurement})
     torch.save(measurements, pathlib.Path(args.checkpoint.replace("_model.pt", "_measure.pt")))

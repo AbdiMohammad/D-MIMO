@@ -72,11 +72,15 @@ def insert_mimo_channel(model, split_layer, n_streams, channel_model, snr, preco
     channel = mimo_comm.MIMOChannel(batch_size, n_streams=n_streams, model=channel_model, PSNR=snr).to(model_device(model))
     
     # latent_shape = get_module_output_shape(model, dataloader, split_layer)
-    precoder = mimo_comm.MIMOPrecoder(n_streams=n_streams, type=precoder_type).to(model_device(model))
-    precoder.set_channel_matrix(channel.channel_matrix)
+    if precoder_type is not None:
+        precoder = mimo_comm.MIMOPrecoder(n_streams=n_streams, type=precoder_type).to(model_device(model))
+        precoder.set_channel_matrix(channel.channel_matrix)
 
-    combiner = mimo_comm.MIMOCombiner(n_streams=n_streams, type=precoder_type).to(model_device(model))
-    combiner.set_channel_matrix(channel.channel_matrix)
+        combiner = mimo_comm.MIMOCombiner(n_streams=n_streams, type=precoder_type).to(model_device(model))
+        combiner.set_channel_matrix(channel.channel_matrix)
+    else:
+        precoder = nn.Identity()
+        combiner = nn.Identity()
     
     # Loading the pinv equivalent weights
     # precoder.load_state_dict(torch.load("results/reconst_precode.pth"))
