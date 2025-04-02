@@ -81,7 +81,7 @@ def save_time():
     start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
 
     latent_size = None
-    
+
     with torch.no_grad():
         for _ in range(n_times):
             for inputs, _ in evalloader:
@@ -113,6 +113,7 @@ def save_time():
     
     average_time = sum(inference_time) / len(inference_time) if inference_time else 0
 
+    total_symbols = None
     communication_time, communication_energy = None, None
     if args.partition == "ES":
         # Bandwith of our mmWave MIMO software-defined-radio (Pi-Radio)
