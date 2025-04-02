@@ -1,6 +1,7 @@
 #! /bin/bash
 
-GPU_DEVICE=$1
+EXEC_DEVICE=$1
+GPU_DEVICE=$2
 
 depths=(28 16 10)
 widths=(10 8 4)
@@ -34,7 +35,7 @@ do
         echo ${model_name}
 
         checkpoint=results/Experiment${experiment_nr}_${model}-BF-${BF_size}_${dataset}_${type}_${num}_${width}_${initial_width}_None_False_False_False_0.1_0.0001_1.0_None_${batch_size_train}_${number_of_cpus_train}_${epochs}_0.2_1e-05_1.0_10.0_1_model.pt
-        CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py ${model} ${dataset} ${type} ${num} --width ${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint ${checkpoint} --split_layer layer1 --channel_model rayleigh --precoder_type task-oriented --bottlefit_size ${BF_size} --partition MD
+        CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py ${model} ${dataset} ${type} ${num} --width ${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint ${checkpoint} --split_layer layer1 --bottlefit_size ${BF_size} --partition ${EXEC_DEVICE}
     done
 done
 
@@ -52,7 +53,7 @@ done
 #             echo \${model_name}
 
 #             checkpoint=results/Experiment${experiment_nr}_\${model}-BF-\${BF_size}_${dataset}_${type}_${num}_\${width}_${initial_width}_None_False_False_False_0.1_0.0001_1.0_None_${batch_size_train}_${number_of_cpus_train}_${epochs}_0.2_1e-05_1.0_10.0_1_model.pt
-#             CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py \${model} ${dataset} ${type} ${num} --width \${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint \${checkpoint} --split_layer layer1 --channel_model rayleigh --precoder_type task-oriented --partition MD
+#             CUDA_VISIBLE_DEVICES=${GPU_DEVICE} python src/Test_MIMODistNet.py \${model} ${dataset} ${type} ${num} --width \${width} --initial_width ${initial_width} --batch_size ${batch_size_test} --number_of_cpus ${number_of_cpus_test} --checkpoint \${checkpoint} --split_layer layer1 --channel_model rayleigh --precoder_type task-oriented --partition ${EXEC_DEVICE}
 #         done
 #     done
 # EOF

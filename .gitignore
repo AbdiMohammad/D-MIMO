@@ -1,7 +1,15 @@
 # Temporary tests
 MIMOConv/.temp
-MIMOConv/results
-.bkup
+MIMOConv/results/*
+.bkup/*
+
+MIMOConv/plots/figs/energy/*
+MIMOConv/plots/figs/latency/*
+MIMOConv/plots/figs/symbols/*
+
+MIMOConv/plots/results_txt/energy/*
+MIMOConv/plots/results_txt/latency/*
+MIMOConv/plots/results_txt/symbols/*
 
 __pycache__
 *.py[cod]

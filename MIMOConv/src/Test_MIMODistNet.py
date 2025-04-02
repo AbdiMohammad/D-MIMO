@@ -115,34 +115,51 @@ def save_time():
 
     communication_time, communication_energy = None, None
     if args.partition == "ES":
-        if "Dist" in args.model:
-            # TODO: Do it tomorrow when assholes are not here
-            communication_time = 0
-            communication_energy = 0
-        else:
-            # Total application layer buffer size in bytes
-            latent_bytes = latent_size.numel() * 4
-            # Data rate of our MIMO mmWave software-defined-radio (Pi-Radio) in bytes per second
-            # Assumptions: OFDM symbols in each time slot with a total of 1024 * 8 I/Q symbols
-            # QPSK modulation schemes
-            # 568.9 ns per OFDM symbols based on radio bandwidth
-            RADIO_DATA_RATE = 1024 * 8 / 4 / (568.9e-9)
-            # Physical Layer Protocol Data Unit (PPDU) length in bytes
-            PPDU_LEN = 500
-            # Overhead (bytes) = 20 TCP​ + 20 IPv4 ​+ 8 LLC ​+ 24 MAC ​+ 4 FCS ​+ Physical overhead
-            OVERHEAD_PER_PPDU = 76
-            # Number of PPDUs
-            n_ppdu = math.ceil(latent_bytes / (PPDU_LEN - OVERHEAD_PER_PPDU))
-            # Total transferred bytes
-            total_bytes = PPDU_LEN * n_ppdu
-            # Communication time
-            communication_time = total_bytes / RADIO_DATA_RATE
-            # Energy consumption per byte of our radio in Joules per byte
-            RADIO_ENERGY_CONSUMPTION = (3.32e-6) / (1024 * 8 / 4)
-            # Communication energy
-            communication_energy = RADIO_ENERGY_CONSUMPTION * total_bytes
+        # Bandwith of our mmWave MIMO software-defined-radio (Pi-Radio)
+        RADIO_BANDWIDTH = 1.8e9
+        # Data rate of transmission in application layer in bytes per second
+        # Assumptions: Only one transmitter and receiver antenna is used (SISO commuication)
+        # QPSK Modulation scheme
+        RADIO_DATA_RATE = RADIO_BANDWIDTH / 8
+        # Symbol rate of transmission in physical layer in symbols per second
+        # Assumptions: OFDM symbols in each time slot with a total of 1024 * 8 I/Q symbols
+        # QPSK modulation scheme
+        # 568.9 ns per OFDM symbols based on radio bandwidth
+        RADIO_SYMBOL_RATE = 1024 * 8 / (568.9e-9)
+        # Energy consumption per byte of our radio in Joules per byte
+        RADIO_ENERGY_PER_BYTE = 5.843 / RADIO_DATA_RATE
+        # Energy per symbols for transmission in physical layer in Joules per symbols
+        RADIO_ENERGY_PER_SYMBOL = (6.64e-6) / (1024 * 8)
+        # Physical Layer Protocol Data Unit (PPDU) length in bytes
+        PPDU_LEN = 500
+        # Overhead (bytes) = 20 TCP​ + 20 IPv4 ​+ 8 LLC ​+ 24 MAC ​+ 4 FCS ​+ 100 Physical
+        OVERHEAD_PER_PPDU = 176
 
-    return average_time, len(inference_time), communication_time, communication_energy
+        if "Dist" in args.model or \
+            ("WideResNet" in args.model and args.bottlefit_size is None):
+            # Total number of physical layer I/Q symbols
+            latent_symbols = math.ceil(latent_size.numel() / 2)
+            # Total symbols including the latent and synchronization
+            total_symbols = latent_symbols + 10
+            # Communication time (ms)
+            communication_time = total_symbols / RADIO_SYMBOL_RATE * 1000.0
+            # Communication energy (mJ)
+            communication_energy = RADIO_ENERGY_PER_SYMBOL * total_symbols * 1000.0
+        else:
+            # Total application layer buffer size in bytes (total payload)
+            latent_bytes = latent_size.numel() * 4
+            # Number of data bytes in each PPDU
+            data_per_ppdu = PPDU_LEN - OVERHEAD_PER_PPDU
+            # Total transferred bytes
+            total_bytes = PPDU_LEN * math.floor(latent_bytes / data_per_ppdu) + (latent_bytes % data_per_ppdu) + OVERHEAD_PER_PPDU
+            # Total equivalent I/Q symbols
+            total_symbols = total_bytes * 4
+            # Communication time (ms)
+            communication_time = total_bytes / RADIO_DATA_RATE * 1000.0
+            # Communication energy (mJ)
+            communication_energy = RADIO_ENERGY_PER_BYTE * total_bytes * 1000.0
+
+    return average_time, len(inference_time), communication_time, communication_energy, latent_size, total_symbols
 
 
 def warmup_GPU():
@@ -243,7 +260,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
     parser.add_argument('--comm_n_streams', type=int, default=8, help="the number of data streams in MIMO communication system")
     parser.add_argument('--channel_model', type=str, default="awgn", help="the model for the MIMO communication channel")
     parser.add_argument('--comm_snr', type=float, default=20, help="the SNR for the additive white Gaussian noise communication channel used for training")
-    parser.add_argument('--precoder_type', type=str, default="task-oriented", help="the MIMO communication precoding technique")
+    parser.add_argument('--precoder_type', type=str, default=None, help="the MIMO communication precoding technique")
 
     parser.add_argument("--bottlefit_size", type=int, default=None, help="determines the size of the injected bottleneck")
 
@@ -337,7 +354,7 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
 
     measurements = dict()
     if pathlib.Path(args.checkpoint.replace("_model.pt", "_measure.pt")).exists():
-        measurements = torch.load(args.checkpoint)
+        measurements = torch.load(args.checkpoint.replace("_model.pt", "_measure.pt"))
 
     measurement = dict()
 
@@ -368,15 +385,17 @@ if __name__ == '__main__': # avoids rerunning code when multiple processes are s
             exec(f"model.{args.split_layer} = model.{args.split_layer}.split_layer")
             exec(f"model.{args.split_layer} = SplitLayer(model.{args.split_layer}, False)")
 
-    average_time, time_len, communication_time, communication_energy = save_time()
+    average_time, time_len, communication_time, communication_energy, latent_size, total_symbols = save_time()
     print(f'Avg time: {average_time}\nNumber of samples: {time_len}')
     measurement.update({"Time": average_time, "Time_Len": time_len})
-    if communication_time is not None:
-        measurement.update({"Comm_Time": communication_time})
-    if communication_energy is not None:
-        measurement.update({"Comm_Energy": communication_energy})
 
     measurements.update({args.partition: measurement})
+
+    if communication_time is not None:
+        comm_params = dict()
+        comm_params = {"Time": communication_time, "Energy": communication_energy, "Size": latent_size, "Symbols": total_symbols}
+        measurements.update({"COMM": comm_params})
+    
     torch.save(measurements, pathlib.Path(args.checkpoint.replace("_model.pt", "_measure.pt")))
 
     # if "Dist" in args.model:
